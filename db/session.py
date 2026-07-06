@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from db.config import DATABASE_URL, is_sqlite
 from db.models import Base
 
-_connect_args = {"check_same_thread": False} if is_sqlite() else {}
+_connect_args = {"check_same_thread": False, "timeout": 30} if is_sqlite() else {}
 
 engine = create_engine(
     DATABASE_URL,
