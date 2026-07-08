@@ -93,9 +93,20 @@ class EvaluationEngine:
             return self._fallback_label(suggested_importance, decisor_importance, weight)
         try:
             features = self._build_features(suggested_importance, decisor_importance, weight)
-            prediction = self._classifier.predict(features)[0]
+            prediction = self._classifier.predict(features)
+
+            if isinstance(prediction, np.ndarray):
+                # Normalizar casos donde predict devuelve [[valor1, valor2]]
+                if prediction.ndim > 1 and prediction.shape[0] == 1:
+                    prediction = prediction[0]
+                if isinstance(prediction, np.ndarray) and prediction.size == 1:
+                    prediction = prediction.item()
+                elif isinstance(prediction, np.ndarray):
+                    prediction = prediction[0]
+
             if isinstance(prediction, np.generic):
                 prediction = prediction.item()
+
             label = str(prediction)
             if label in Guiosad.levels_lbls:
                 return label

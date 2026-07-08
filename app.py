@@ -188,6 +188,15 @@ def invalidate_engine_cache() -> None:
     st.session_state.pop("engine", None)
 
 
+def reset_evaluation_context() -> None:
+    invalidate_engine_cache()
+    for key in ("project_name", "software_name", "recommendation", "recommendation_style"):
+        st.session_state.pop(key, None)
+    for key in list(st.session_state.keys()):
+        if key.startswith(("dec_", "sc_", "sub_")):
+            st.session_state.pop(key, None)
+
+
 def render_eval_context_bar(engine: EvaluationEngine) -> None:
     user = get_user()
     meta = get_evaluation_detail(st.session_state.evaluacion_id) or {}
@@ -363,33 +372,35 @@ def page_factores() -> None:
         state = engine.factor_states[i]
         rel_label, is_relevant = engine.relative_importance(i)
         raw_scope = engine.raw_scope(i)
-        with st.expander(f"{name} — {rel_label}" + (" · Relevante" if is_relevant else "")):
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                st.caption("Dimensión")
-                st.write(getattr(factor.dimension, "name", "—"))
-                st.write(engine.suggested_label(i))
-            with c2:
-                if edit:
-                    state.decisor_importance = st.select_slider(
-                        "Decisor", options=[1, 2, 3, 4], value=state.decisor_importance,
-                        format_func=lambda v: Guiosad.levels_lbls[v - 1],
-                        key=f"dec_{i}_{st.session_state.evaluacion_id}",
-                    )
-                else:
-                    st.write(Guiosad.levels_lbls[state.decisor_importance - 1])
-            with c3:
-                st.markdown(f"**{rel_label}**")
-            with c4:
-                if raw_scope in ("Interno", "Externo"):
-                    state.scope = raw_scope
-                    st.write(raw_scope)
-                elif edit:
-                    state.scope = st.radio("Alcance", ["Interno", "Externo"],
-                        index=0 if state.scope == "Interno" else 1,
-                        key=f"sc_{i}_{st.session_state.evaluacion_id}", horizontal=True)
-                else:
-                    st.write(state.scope)
+        with st.expander(f"{name} — {rel_label}"):
+            st.caption(getattr(factor.dimension, "name", "—"))
+            st.markdown(f"**Importancia sugerida:** {engine.suggested_label(i)}")
+
+            if edit:
+                state.decisor_importance = st.select_slider(
+                    "Decisor",
+                    options=[1, 2, 3, 4],
+                    value=state.decisor_importance,
+                    format_func=lambda v: Guiosad.levels_lbls[v - 1],
+                    key=f"dec_{i}_{st.session_state.evaluacion_id}",
+                )
+                st.markdown(f"**Decisor seleccionado:** {Guiosad.levels_lbls[state.decisor_importance - 1]}")
+            else:
+                st.markdown(f"**Decisor:** {Guiosad.levels_lbls[state.decisor_importance - 1]}")
+
+            if raw_scope in ("Interno", "Externo"):
+                state.scope = raw_scope
+                st.markdown(f"**Alcance:** {raw_scope}")
+            elif edit:
+                state.scope = st.radio(
+                    "Alcance",
+                    ["Interno", "Externo"],
+                    index=0 if state.scope == "Interno" else 1,
+                    key=f"sc_{i}_{st.session_state.evaluacion_id}",
+                    horizontal=True,
+                )
+            else:
+                st.markdown(f"**Alcance:** {state.scope}")
     if edit and st.button("Guardar borrador", type="primary"):
         _save_draft()
 
@@ -501,6 +512,7 @@ def render_sidebar(user: AuthUser, storage_mode: str) -> None:
     if st.button("Panel ejecutivo", use_container_width=True,
                  type="primary" if st.session_state.page == "Dashboard" else "secondary"):
         st.session_state.page = "Dashboard"
+        reset_evaluation_context()
         st.rerun()
 
     if st.button("Historial de consultas", use_container_width=True,
@@ -517,17 +529,18 @@ def render_sidebar(user: AuthUser, storage_mode: str) -> None:
             "Paso 5-6": "③ FODA e informe",
         }
         steps = ["Paso 1-2", "Paso 3-4", "Paso 5-6"]
-        current = st.session_state.page if st.session_state.page in steps else "Paso 1-2"
-        choice = st.radio(
-            "Pasos",
-            steps,
-            format_func=lambda p: step_labels[p],
-            index=steps.index(current),
-            label_visibility="collapsed",
-        )
-        if choice != st.session_state.page:
-            st.session_state.page = choice
-            st.rerun()
+        current = st.session_state.page if st.session_state.page in steps else None
+        if current is not None:
+            choice = st.radio(
+                "Pasos",
+                steps,
+                format_func=lambda p: step_labels[p],
+                index=steps.index(current),
+                label_visibility="collapsed",
+            )
+            if choice != st.session_state.page:
+                st.session_state.page = choice
+                st.rerun()
 
         if user.puede_editar:
             if st.button("Guardar borrador", use_container_width=True):
@@ -565,12 +578,13 @@ def main() -> None:
         render_sidebar(user, storage_mode)
 
     page = st.session_state.page
+    evaluation_pages = ("Paso 1-2", "Paso 3-4", "Paso 5-6")
 
     if page == "Dashboard":
         page_dashboard()
     elif page == "Historial":
         page_historial()
-    elif page in ("Paso 1-2", "Paso 3-4", "Paso 5-6"):
+    elif page in evaluation_pages:
         eng = get_engine()
         if not st.session_state.get("evaluacion_id"):
             st.warning("Seleccione una evaluación o cree una nueva desde el Dashboard.")
